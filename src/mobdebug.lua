@@ -99,6 +99,77 @@ local iscasepreserving = win or (mac and io.open('/library') ~= nil)
 -- reliable hook calls at any later point in time."
 if jit and jit.off then jit.off() end
 
+-- list of available debugger commands
+-- KEEP THIS LIST ALPHABETICALLY SORTED
+local commands = {
+  "adelb",
+  "asetb",
+  "basedir",
+  "delallb",
+  "delallw",
+  "delb",
+  "delw",
+  "done",
+  "eval",
+  "exec",
+  "exit",
+  "help",
+  "listb",
+  "listw",
+  "load",
+  "loadstring",
+  "out",
+  "output",
+  "over",
+  "reload",
+  "run",
+  "setb",
+  "setw",
+  "stack",
+  "step",
+  "suspend",
+}
+
+-- Find a string starting with the given prefix (using binary search)
+-- in the array 'commands'
+local function bs(prefix, start_pos, end_pos)
+  local middle = math.floor((end_pos - start_pos) / 2)
+  local item_prefix = commands[start_pos + middle]:sub(1, #prefix)
+
+  if start_pos > end_pos then
+    return nil
+  end
+
+  -- Compare prefixes lexicographically
+  if item_prefix > prefix then
+    return bs(prefix, start_pos, start_pos + middle - 1)
+  elseif item_prefix < prefix then
+    return bs(prefix, start_pos + middle + 1, end_pos)
+  elseif item_prefix == prefix then
+    -- If there are more than one strings with the same prefix,
+    -- we always return the last one, otherwise the behavior would be non-uniform
+    local pos = start_pos + middle
+
+    while commands[pos + 1] and commands[pos + 1]:sub(1, #prefix) == prefix do
+      pos = pos + 1
+    end
+
+    return commands[pos]
+  else
+    return nil
+  end
+end
+
+-- We use binary search to look for the commands that
+-- start with the given string. It's unlikely for the number of commands
+-- to grow massively high, so using binary search is fine.
+-- Bear in mind, however, that the list must be alphabetically sorted for
+-- binary search to work.
+local function get_command(str)
+  local _, _, command = string.find(str, "^([a-z]+)")
+  return command and bs(command, 1, #commands)
+end
+
 local socket = require "socket"
 local coro_debugger
 local coro_debugee
@@ -1253,7 +1324,7 @@ local function handle(params, client, options)
   local verbose = not options or options.verbose ~= nil and options.verbose
   local print = verbose and (type(verbose) == "function" and verbose or print) or function() end
   local file, line, watch_idx
-  local _, _, command = string.find(params, "^([a-z]+)")
+  local _, _, command = get_command(params)
   if command == "run" or command == "step" or command == "out"
   or command == "over" or command == "exit" then
     client:send(string.upper(command) .. "\n")
